@@ -1,41 +1,47 @@
+#pragma  once
+
 #include <iostream>
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <memory>
 
-class Timer {
-	std::atomic<bool> active{true};
-	
-    public:
-        void setTimeout(auto function, int delay);
-        void setInterval(auto function, int interval);
-        void stop();
+class Timer : public std::enable_shared_from_this<Timer> {
+	std::atomic<bool> active{ true };
+
+public:
+
+	template<typename Function>
+	void setTimeout(Function function, int delay) {
+		active = true;
+		auto self = shared_from_this();
+		std::thread t([self, function, delay]() {
+			if (!self->active.load()) return;
+			std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+			if (!self->active.load()) return;
+			function();
+			});
+		t.detach();
+	}
+
+	template<typename Function>
+	void setInterval(Function function, int interval) {
+		active = true;
+		auto self = shared_from_this();
+		std::thread t([self, function, interval]() {
+			while (self->active.load()) {
+				std::this_thread::sleep_for(std::chrono::milliseconds(interval));
+				if (!self->active.load()) return;
+				function();
+			}
+			});
+		t.detach();
+	}
+
+	void stop();
 
 };
 
-void Timer::setTimeout(auto function, int delay) {
-    active = true;
-    std::thread t([=]() {
-        if(!active.load()) return;
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay));
-        if(!active.load()) return;
-        function();
-    });
-    t.detach();
-}
-
-void Timer::setInterval(auto function, int interval) {
-    active = true;
-    std::thread t([=]() {
-        while(active.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(interval));
-            if(!active.load()) return;
-            function();
-        }
-    });
-    t.detach();
-}
-
-void Timer::stop() {
-    active = false;
+inline void Timer::stop() {
+	active = false;
 }
